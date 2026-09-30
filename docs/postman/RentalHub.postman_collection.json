@@ -1,0 +1,949 @@
+{
+  "info": {
+    "name": "RentalHub",
+    "_postman_id": "rentalhub-phase1-2-3-collection",
+    "description": "RentalHub equipment rental platform — Phase 1 (marketplace) + Phase 2 (booking & rental lifecycle) + Phase 3 (analytics & intelligence) REST API (v1).\n\nUse the `{{base_url}}` variable (default http://localhost:3000). Auth uses httpOnly cookies set automatically by Postman — no manual Authorization header needed after login.\n\nPhase 2 booking lifecycle: PENDING → HELD → CONFIRMED → PICKED_UP → IN_USE → RETURN_PENDING → RETURNED → INSPECTED → COMPLETED (plus CANCELLED / LATE / DISPUTED). See the Bookings folder for the lifecycle endpoints and the API_CONTRACT.md §5.1 state machine.\n\nDemo accounts (seeded):\n- admin@rentalhub.test / Admin123!\n- rohit@rentalhub.test / Owner123!\n- rahul@rentalhub.test / Customer123!",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "equipment_id", "value": "REPLACE_WITH_EQUIPMENT_CUID", "type": "string" },
+    { "key": "category_id", "value": "REPLACE_WITH_CATEGORY_CUID", "type": "string" },
+    { "key": "user_id", "value": "REPLACE_WITH_USER_CUID", "type": "string" },
+    { "key": "block_id", "value": "REPLACE_WITH_BLOCK_CUID", "type": "string" },
+    { "key": "log_id", "value": "REPLACE_WITH_LOG_CUID", "type": "string" },
+    { "key": "window_id", "value": "REPLACE_WITH_WINDOW_CUID", "type": "string" },
+    { "key": "image_id", "value": "REPLACE_WITH_IMAGE_CUID", "type": "string" },
+    { "key": "booking_id", "value": "REPLACE_WITH_BOOKING_CUID", "type": "string" },
+    { "key": "payment_id", "value": "REPLACE_WITH_PAYMENT_CUID", "type": "string" },
+    { "key": "dispute_id", "value": "REPLACE_WITH_DISPUTE_CUID", "type": "string" },
+    { "key": "suggestion_id", "value": "REPLACE_WITH_SUGGESTION_CUID", "type": "string" },
+    { "key": "reset_token", "value": "REPLACE_WITH_RESET_TOKEN", "type": "string" }
+  ],
+  "auth": { "type": "noauth" },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "type": "text/javascript", "exec": [""] }
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Authentication, profile, avatar, password reset. Cookies are used for session — no manual token header.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"New User\",\n  \"email\": \"newuser@example.com\",\n  \"password\": \"Password123!\",\n  \"role\": \"customer\"\n}" }
+          }
+        },
+        {
+          "name": "Login (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"rahul@rentalhub.test\",\n  \"password\": \"Customer123!\"\n}" }
+          }
+        },
+        {
+          "name": "Login (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"rohit@rentalhub.test\",\n  \"password\": \"Owner123!\"\n}" }
+          }
+        },
+        {
+          "name": "Login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@rentalhub.test\",\n  \"password\": \"Admin123!\"\n}" }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "logout"] }
+          }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "refresh"] }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/me", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "me"] }
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/profile", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "profile"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Name\",\n  \"phone\": \"+91 90000 00000\",\n  \"bio\": \"Updated bio text.\"\n}" }
+          }
+        },
+        {
+          "name": "Upload avatar",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "multipart/form-data" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/avatar", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "avatar"] },
+            "body": { "mode": "formdata", "formdata": [{ "key": "avatar", "type": "file", "src": [] }] }
+          }
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/forgot-password", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "forgot-password"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"rahul@rentalhub.test\"\n}" }
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/reset-password", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "reset-password"] },
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"password\": \"NewPassword123!\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "description": "Category taxonomy. Admin-only writes.",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/categories", "host": ["{{base_url}}"], "path": ["api", "v1", "categories"] }
+          }
+        },
+        {
+          "name": "Create category (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/categories", "host": ["{{base_url}}"], "path": ["api", "v1", "categories"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Garden Tools\",\n  \"slug\": \"garden-tools\",\n  \"description\": \"Lawnmowers, trimmers and garden equipment.\"\n}" }
+          }
+        },
+        {
+          "name": "Get category",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/categories/{{category_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "categories", "{{category_id}}"] }
+          }
+        },
+        {
+          "name": "Update category (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/categories/{{category_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "categories", "{{category_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Updated description.\"\n}" }
+          }
+        },
+        {
+          "name": "Delete category (admin)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/categories/{{category_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "categories", "{{category_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Equipment",
+      "description": "Equipment listings: search, CRUD, my, compare, images.",
+      "item": [
+        {
+          "name": "Search marketplace",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment?q=drill&category=power-tools&minPrice=100&maxPrice=400&city=Mumbai&minRating=4&sort=price&order=asc&page=1&limit=12&status=active", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment"], "query": [
+              { "key": "q", "value": "drill" },
+              { "key": "category", "value": "power-tools" },
+              { "key": "minPrice", "value": "100" },
+              { "key": "maxPrice", "value": "400" },
+              { "key": "city", "value": "Mumbai" },
+              { "key": "minRating", "value": "4" },
+              { "key": "sort", "value": "price" },
+              { "key": "order", "value": "asc" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "12" },
+              { "key": "status", "value": "active" }
+            ] }
+          }
+        },
+        {
+          "name": "Search with geo radius",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment?lat=19.076&lng=72.8777&radiusKm=50&sort=distance&order=asc", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment"], "query": [
+              { "key": "lat", "value": "19.076" },
+              { "key": "lng", "value": "72.8777" },
+              { "key": "radiusKm", "value": "50" },
+              { "key": "sort", "value": "distance" },
+              { "key": "order", "value": "asc" }
+            ] }
+          }
+        },
+        {
+          "name": "Create listing (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Bosch GSB 550W Impact Drill\",\n  \"description\": \"Well maintained 550W impact drill with 13mm chuck. Suitable for wood, metal and masonry.\",\n  \"categoryId\": \"{{category_id}}\",\n  \"status\": \"draft\",\n  \"condition\": \"like_new\",\n  \"baseDailyPrice\": 250,\n  \"baseHourlyPrice\": 40,\n  \"baseDeposit\": 500,\n  \"replacementValue\": 4500,\n  \"lat\": 19.076,\n  \"lng\": 72.8777,\n  \"city\": \"Mumbai\",\n  \"address\": \"Mumbai\",\n  \"bufferHours\": 2,\n  \"pricingRules\": [\n    { \"type\": \"weekend_surcharge\", \"value\": 15, \"unit\": \"percent\" },\n    { \"type\": \"long_discount\", \"value\": 10, \"unit\": \"percent\", \"minDays\": 7, \"label\": \"7+ days -10%\" }\n  ],\n  \"specs\": [\n    { \"key\": \"Power\", \"value\": \"550W\" },\n    { \"key\": \"Chuck\", \"value\": \"13mm\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "My listings (owner)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/my?page=1&limit=12&status=active", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "my"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "12" },
+              { "key": "status", "value": "active" }
+            ] }
+          }
+        },
+        {
+          "name": "Compare (2-3 ids)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/compare?ids=ID_A,ID_B,ID_C", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "compare"], "query": [{ "key": "ids", "value": "ID_A,ID_B,ID_C" }] }
+          }
+        },
+        {
+          "name": "Get equipment detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}?lat=19.076&lng=72.8777", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}"], "query": [
+              { "key": "lat", "value": "19.076" },
+              { "key": "lng", "value": "72.8777" }
+            ] }
+          }
+        },
+        {
+          "name": "Update listing (owner)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"active\",\n  \"baseDailyPrice\": 260,\n  \"specs\": [\n    { \"key\": \"Power\", \"value\": \"550W\" },\n    { \"key\": \"Chuck\", \"value\": \"13mm\" },\n    { \"key\": \"Weight\", \"value\": \"1.8 kg\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Delete listing (owner)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}"] }
+          }
+        },
+        {
+          "name": "Upload images (owner, multipart)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "multipart/form-data" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/images", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "images"] },
+            "body": { "mode": "formdata", "formdata": [{ "key": "images", "type": "file", "src": [] }] }
+          }
+        },
+        {
+          "name": "Set primary image (owner)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/images", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "images"] },
+            "body": { "mode": "raw", "raw": "{\n  \"imageId\": \"{{image_id}}\",\n  \"isPrimary\": true,\n  \"order\": 0\n}" }
+          }
+        },
+        {
+          "name": "Delete image (owner)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/images/{{image_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "images", "{{image_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Availability",
+      "description": "Owner-blocked date ranges on equipment.",
+      "item": [
+        {
+          "name": "List availability blocks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/availability", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "availability"] }
+          }
+        },
+        {
+          "name": "Block a date range (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/availability", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "availability"] },
+            "body": { "mode": "raw", "raw": "{\n  \"startDate\": \"2025-12-01T00:00:00.000Z\",\n  \"endDate\": \"2025-12-05T00:00:00.000Z\",\n  \"reason\": \"owner_blocked\"\n}" }
+          }
+        },
+        {
+          "name": "Unblock (owner)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/availability/{{block_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "availability", "{{block_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Maintenance",
+      "description": "Maintenance logs (past) and maintenance windows (scheduled).",
+      "item": [
+        {
+          "name": "List maintenance logs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance"] }
+          }
+        },
+        {
+          "name": "Log maintenance (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Quarterly service\",\n  \"description\": \"Replaced worn brushes, lubricated gears.\",\n  \"cost\": 450,\n  \"performedAt\": \"2025-11-15T10:00:00.000Z\"\n}" }
+          }
+        },
+        {
+          "name": "Update maintenance log (owner)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance/{{log_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance", "{{log_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Quarterly service (updated)\",\n  \"cost\": 500\n}" }
+          }
+        },
+        {
+          "name": "Delete maintenance log (owner)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance/{{log_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance", "{{log_id}}"] }
+          }
+        },
+        {
+          "name": "List maintenance windows",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance-windows", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance-windows"] }
+          }
+        },
+        {
+          "name": "Schedule maintenance window (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance-windows", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance-windows"] },
+            "body": { "mode": "raw", "raw": "{\n  \"startDate\": \"2025-12-10T00:00:00.000Z\",\n  \"endDate\": \"2025-12-11T00:00:00.000Z\",\n  \"notes\": \"Scheduled calibration.\"\n}" }
+          }
+        },
+        {
+          "name": "Delete maintenance window (owner)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/maintenance-windows/{{window_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "maintenance-windows", "{{window_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "description": "Equipment reviews: list per-equipment, create as customer.",
+      "item": [
+        {
+          "name": "List reviews for equipment",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/equipment/{{equipment_id}}/reviews?page=1&limit=10", "host": ["{{base_url}}"], "path": ["api", "v1", "equipment", "{{equipment_id}}", "reviews"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" }
+            ] }
+          }
+        },
+        {
+          "name": "Create review (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/reviews", "host": ["{{base_url}}"], "path": ["api", "v1", "reviews"] },
+            "body": { "mode": "raw", "raw": "{\n  \"receiverId\": \"{{user_id}}\",\n  \"equipmentId\": \"{{equipment_id}}\",\n  \"rating\": 5,\n  \"title\": \"Great experience\",\n  \"body\": \"Equipment was in good condition and the owner was responsive.\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wishlist",
+      "description": "Save equipment for later.",
+      "item": [
+        {
+          "name": "List my wishlist",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/wishlist?page=1&limit=24", "host": ["{{base_url}}"], "path": ["api", "v1", "wishlist"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "24" }
+            ] }
+          }
+        },
+        {
+          "name": "Add to wishlist",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/wishlist", "host": ["{{base_url}}"], "path": ["api", "v1", "wishlist"] },
+            "body": { "mode": "raw", "raw": "{\n  \"equipmentId\": \"{{equipment_id}}\"\n}" }
+          }
+        },
+        {
+          "name": "Toggle in wishlist",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/wishlist/{{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "wishlist", "{{equipment_id}}"] }
+          }
+        },
+        {
+          "name": "Remove from wishlist",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/wishlist/{{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "wishlist", "{{equipment_id}}"] }
+          }
+        },
+        {
+          "name": "Is in my wishlist?",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/wishlist/{{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "wishlist", "{{equipment_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Upload",
+      "description": "Generic image upload/delete.",
+      "item": [
+        {
+          "name": "Upload images",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "multipart/form-data" }],
+            "url": { "raw": "{{base_url}}/api/v1/upload", "host": ["{{base_url}}"], "path": ["api", "v1", "upload"] },
+            "body": { "mode": "formdata", "formdata": [{ "key": "images", "type": "file", "src": [] }] }
+          }
+        },
+        {
+          "name": "Delete upload by publicId",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/upload", "host": ["{{base_url}}"], "path": ["api", "v1", "upload"] },
+            "body": { "mode": "raw", "raw": "{\n  \"publicId\": \"REPLACE_WITH_FILENAME.jpg\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Admin oversight: users, moderation, audit logs, stats. Admin role required.",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/admin/users?page=1&limit=20&role=owner&q=&suspended=false&verified=true", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "users"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "20" },
+              { "key": "role", "value": "owner" },
+              { "key": "q", "value": "" },
+              { "key": "suspended", "value": "false" },
+              { "key": "verified", "value": "true" }
+            ] }
+          }
+        },
+        {
+          "name": "Update user (verify/suspend/role)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "users", "{{user_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"isVerified\": true,\n  \"isSuspended\": false\n}" }
+          }
+        },
+        {
+          "name": "Moderation queue",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/admin/equipment?page=1&limit=20&status=draft", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "equipment"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "20" },
+              { "key": "status", "value": "draft" }
+            ] }
+          }
+        },
+        {
+          "name": "Approve listing",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/admin/equipment/{{equipment_id}}/moderate", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "equipment", "{{equipment_id}}", "moderate"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\",\n  \"notes\": \"Looks good.\"\n}" }
+          }
+        },
+        {
+          "name": "Reject listing",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/admin/equipment/{{equipment_id}}/moderate", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "equipment", "{{equipment_id}}", "moderate"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"reject\",\n  \"notes\": \"Missing safety information.\"\n}" }
+          }
+        },
+        {
+          "name": "Audit logs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/admin/audit-logs?page=1&limit=25&action=&resource=&actorId=", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "audit-logs"], "query": [
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "25" },
+              { "key": "action", "value": "" },
+              { "key": "resource", "value": "" },
+              { "key": "actorId", "value": "" }
+            ] }
+          }
+        },
+        {
+          "name": "Platform stats",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/admin/stats", "host": ["{{base_url}}"], "path": ["api", "v1", "admin", "stats"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "description": "Phase 2 — Booking system & rental lifecycle.\n\nState machine: pending → held → confirmed → picked_up → in_use → return_pending → returned → inspected → completed (plus cancelled / late / disputed). All transitions are audited into BookingStatusHistory. Active statuses (held/confirmed/picked_up/in_use/return_pending/returned/inspected) block the equipment's date range via a `booked` AvailabilityBlock.\n\nHappy path: POST /bookings → held → POST /bookings/:id/payments → confirmed → POST /bookings/:id/pickup → picked_up → POST /bookings/:id/return {action:initiate} → return_pending → POST /bookings/:id/return {action:confirm} → returned → POST /bookings/:id/inspect → inspected → POST /bookings/:id/complete → completed.",
+      "item": [
+        {
+          "name": "Check availability (public)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/check-availability", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "check-availability"] },
+            "body": { "mode": "raw", "raw": "{\n  \"equipmentId\": \"{{equipment_id}}\",\n  \"startDate\": \"2026-02-10T09:00:00.000Z\",\n  \"endDate\": \"2026-02-13T09:00:00.000Z\"\n}" }
+          }
+        },
+        {
+          "name": "Create booking (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings"] },
+            "body": { "mode": "raw", "raw": "{\n  \"equipmentId\": \"{{equipment_id}}\",\n  \"startDate\": \"2026-02-10T09:00:00.000Z\",\n  \"endDate\": \"2026-02-13T09:00:00.000Z\",\n  \"idempotencyKey\": \"checkout-1740000000\"\n}" }
+          }
+        },
+        {
+          "name": "List my bookings",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/bookings?status=&page=1&limit=12", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings"], "query": [
+              { "key": "status", "value": "" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "12" }
+            ] }
+          }
+        },
+        {
+          "name": "Get booking detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}"] }
+          }
+        },
+        {
+          "name": "Pay (hold deposit + charge rental)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments"] },
+            "body": { "mode": "raw", "raw": "{\n  \"idempotencyKey\": \"pay-{{booking_id}}\"\n}" }
+          }
+        },
+        {
+          "name": "Release deposit (owner/admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/{{payment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "{{payment_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"release\",\n  \"amount\": 500\n}" }
+          }
+        },
+        {
+          "name": "Refund payment (owner/admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/payments/{{payment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "payments", "{{payment_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"refund\"\n}" }
+          }
+        },
+        {
+          "name": "Confirm (customer, after payment)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/confirm", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "confirm"] }
+          }
+        },
+        {
+          "name": "Owner approve / reject",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/approve", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "approve"] },
+            "body": { "mode": "raw", "raw": "{\n  \"approve\": true\n}" }
+          }
+        },
+        {
+          "name": "Cancel booking",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/cancel", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "cancel"] },
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Customer schedule changed.\"\n}" }
+          }
+        },
+        {
+          "name": "Pickup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/pickup", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "pickup"] },
+            "body": { "mode": "raw", "raw": "{\n  \"checklist\": { \"fuel_full\": true, \"no_damage\": true },\n  \"photos\": [\"https://example.com/pickup1.jpg\"]\n}" }
+          }
+        },
+        {
+          "name": "Initiate return (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/return", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "return"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"initiate\"\n}" }
+          }
+        },
+        {
+          "name": "Confirm return (owner)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/return", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "return"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"confirm\",\n  \"checklist\": { \"no_damage\": true, \"fuel_full\": true }\n}" }
+          }
+        },
+        {
+          "name": "Inspect (owner, pass:true → inspected, pass:false → disputed)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/inspect", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "inspect"] },
+            "body": { "mode": "raw", "raw": "{\n  \"pass\": true\n}" }
+          }
+        },
+        {
+          "name": "Complete (finalize, release deposit)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/complete", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "complete"] }
+          }
+        },
+        {
+          "name": "Extend (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/extend", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "extend"] },
+            "body": { "mode": "raw", "raw": "{\n  \"newEndDate\": \"2026-02-15T09:00:00.000Z\"\n}" }
+          }
+        },
+        {
+          "name": "Two-way review (after completed)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/review", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "review"] },
+            "body": { "mode": "raw", "raw": "{\n  \"rating\": 5,\n  \"title\": \"Smooth rental\",\n  \"body\": \"Equipment was in great condition and pickup/return was easy.\"\n}" }
+          }
+        },
+        {
+          "name": "List booking messages",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/messages", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "messages"] }
+          }
+        },
+        {
+          "name": "Send booking message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/messages", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{booking_id}}", "messages"] },
+            "body": { "mode": "raw", "raw": "{\n  \"message\": \"Hi, what time should I pick up the drill?\",\n  \"attachmentUrl\": null\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Disputes",
+      "description": "Phase 2 — Disputes raised against a booking. Reasons: damage | late_return | wrong_item | payment | other. Resolutions (admin): refund_customer | favor_owner | split | warning.",
+      "item": [
+        {
+          "name": "Raise a dispute",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/disputes", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes"] },
+            "body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"{{booking_id}}\",\n  \"reason\": \"damage\",\n  \"description\": \"The drill chuck was cracked upon return. Photos attached.\",\n  \"evidenceUrls\": [\"https://example.com/damage1.jpg\", \"https://example.com/damage2.jpg\"]\n}" }
+          }
+        },
+        {
+          "name": "List disputes",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/disputes?status=&page=1&limit=20", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes"], "query": [
+              { "key": "status", "value": "" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "20" }
+            ] }
+          }
+        },
+        {
+          "name": "Get dispute detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/disputes/{{dispute_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes", "{{dispute_id}}"] }
+          }
+        },
+        {
+          "name": "List dispute messages",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/disputes/{{dispute_id}}/messages", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes", "{{dispute_id}}", "messages"] }
+          }
+        },
+        {
+          "name": "Send dispute message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/disputes/{{dispute_id}}/messages", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes", "{{dispute_id}}", "messages"] },
+            "body": { "mode": "raw", "raw": "{\n  \"message\": \"I acknowledge the damage — willing to split the repair cost.\"\n}" }
+          }
+        },
+        {
+          "name": "Resolve dispute (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/disputes/{{dispute_id}}/resolve", "host": ["{{base_url}}"], "path": ["api", "v1", "disputes", "{{dispute_id}}", "resolve"] },
+            "body": { "mode": "raw", "raw": "{\n  \"resolution\": \"split\",\n  \"resolutionNote\": \"Cost of repair split 50/50 between customer and owner. Deposit refunded minus owner's share.\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cron",
+      "description": "Phase 2 — Scheduled jobs. There is no internal scheduler; invoke this from an external cron (Vercel Cron, node-cron, k8s CronJob).",
+      "item": [
+        {
+          "name": "Run all cron jobs",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/cron/run?job=all", "host": ["{{base_url}}"], "path": ["api", "v1", "cron", "run"], "query": [{ "key": "job", "value": "all" }] }
+          }
+        },
+        {
+          "name": "Release expired checkout holds",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/cron/run?job=release-holds", "host": ["{{base_url}}"], "path": ["api", "v1", "cron", "run"], "query": [{ "key": "job", "value": "release-holds" }] }
+          }
+        },
+        {
+          "name": "Detect late returns",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/cron/run?job=detect-late", "host": ["{{base_url}}"], "path": ["api", "v1", "cron", "run"], "query": [{ "key": "job", "value": "detect-late" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "description": "Phase 3 — Booking analytics. Owners see their own bookings/equipment; admins see the platform.",
+      "item": [
+        {
+          "name": "Revenue trend (6 months)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/analytics/revenue?months=6", "host": ["{{base_url}}"], "path": ["api", "v1", "analytics", "revenue"], "query": [{ "key": "months", "value": "6" }] }
+          }
+        },
+        {
+          "name": "Per-item utilization",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/analytics/utilization", "host": ["{{base_url}}"], "path": ["api", "v1", "analytics", "utilization"] }
+          }
+        },
+        {
+          "name": "Booking patterns (weekday/hour)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/analytics/patterns", "host": ["{{base_url}}"], "path": ["api", "v1", "analytics", "patterns"] }
+          }
+        },
+        {
+          "name": "Owner leaderboard + ROI (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/analytics/leaderboard", "host": ["{{base_url}}"], "path": ["api", "v1", "analytics", "leaderboard"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Intelligence",
+      "description": "Phase 3 — Demand-aware pricing, recommendations, fraud detection, trust scoring, late-return prediction, what-if simulator.",
+      "item": [
+        {
+          "name": "Pricing suggestions (owner/admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/pricing-suggestions", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "pricing-suggestions"] }
+          }
+        },
+        {
+          "name": "Accept pricing suggestion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/pricing-suggestions/{{suggestion_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "pricing-suggestions", "{{suggestion_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"accept\"\n}" }
+          }
+        },
+        {
+          "name": "Dismiss pricing suggestion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/pricing-suggestions/{{suggestion_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "pricing-suggestions", "{{suggestion_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"dismiss\"\n}" }
+          }
+        },
+        {
+          "name": "Edit pricing suggestion (custom price)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/pricing-suggestions/{{suggestion_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "pricing-suggestions", "{{suggestion_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"edit\",\n  \"editedPrice\": 275\n}" }
+          }
+        },
+        {
+          "name": "Recommendations — For you (personalized)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/recommendations?type=for_you", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "recommendations"], "query": [{ "key": "type", "value": "for_you" }] }
+          }
+        },
+        {
+          "name": "Recommendations — Frequently together",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/recommendations?type=frequently_together&id={{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "recommendations"], "query": [
+              { "key": "type", "value": "frequently_together" },
+              { "key": "id", "value": "{{equipment_id}}" }
+            ] }
+          }
+        },
+        {
+          "name": "Recommendations — Similar equipment",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/recommendations?type=similar&id={{equipment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "recommendations"], "query": [
+              { "key": "type", "value": "similar" },
+              { "key": "id", "value": "{{equipment_id}}" }
+            ] }
+          }
+        },
+        {
+          "name": "Fraud flags (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/fraud-flags", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "fraud-flags"] }
+          }
+        },
+        {
+          "name": "My trust score + factors",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/trust-score", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "trust-score"] }
+          }
+        },
+        {
+          "name": "Trust score for a user (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/trust-score?userId={{user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "trust-score"], "query": [{ "key": "userId", "value": "{{user_id}}" }] }
+          }
+        },
+        {
+          "name": "Late-return prediction",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/late-prediction", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "late-prediction"] }
+          }
+        },
+        {
+          "name": "What-if simulator (price + availability)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/intelligence/what-if", "host": ["{{base_url}}"], "path": ["api", "v1", "intelligence", "what-if"] },
+            "body": { "mode": "raw", "raw": "{\n  \"equipmentId\": \"{{equipment_id}}\",\n  \"dailyPrice\": 275,\n  \"availableDaysPerMonth\": 22\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

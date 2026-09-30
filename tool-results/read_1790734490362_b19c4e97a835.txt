@@ -1,0 +1,392 @@
+     1→     1→# RentalHub — Progress
+     2→     2→
+     3→     3→## Current status
+     4→     4→
+     5→     5→- **Phase 1 — Foundation & Marketplace: COMPLETE (backend + seed + API).**
+     6→     6→- **Phase 2 — Booking System & Rental Lifecycle: COMPLETE (backend + 12 new views + seed).**
+     7→     7→- **Phase 3 — Analytics & Intelligence: COMPLETE (4 analytics + 6 intelligence endpoints + 3 dashboards).**
+     8→     8→
+     9→     9→The API surface, data model, RBAC, audit logging, file upload, and seed are all wired and runnable
+    10→    10→for Phases 1–3. The SPA shell (single `/` route with `?view=` keys) renders 17 Phase 1 views and 13
+    11→    11→new Phase 2+3 views. See "Page Inventory" and "Known issues" below for the precise state.
+    12→    12→
+    13→    13→---
+    14→    14→
+    15→    15→## Features done (Phase 1 checklist)
+    16→    16→
+    17→    17→- [x] **Auth & roles** — register, login, logout, refresh (rotating), `me`, profile update,
+    18→    18→  avatar upload, forgot-password (dev-mail), reset-password. 3 roles with `requireAuth`/`assertOwner`.
+    19→    19→- [x] **Models** — 11 Prisma models (User, Category, Equipment, EquipmentImage, EquipmentSpec,
+    20→    20→  AvailabilityBlock, MaintenanceLog, MaintenanceWindow, Wishlist, Review, Notification, AuditLog).
+    21→    21→  Soft delete on User/Category/Equipment/Review. Indexes for hot paths. Enums as String + Zod.
+    22→    22→- [x] **Customer journey** — browse (`GET /equipment` with q, category, minPrice, maxPrice, city,
+    23→    23→  minRating, lat/lng/radiusKm, sort, order, page, limit, status), compare (2–3 items), wishlist
+    24→    24→  (toggle, list, is-saved), reviews (read per-equipment, create as customer).
+    25→    25→- [x] **Owner listings** — create/update/soft-delete; dynamic pricing rules (weekend_surcharge,
+    26→    26→  long_discount, seasonal; ≤8, Zod-validated); image upload (multipart, ≤8/5MB), set primary,
+    27→    27→  reorder, delete (auto-promotes a new primary); specs (key/value, ordered, replace-on-update);
+    28→    28→  availability blocks (owner_blocked/maintenance/booked); maintenance logs + maintenance windows
+    29→    29→  (a window auto-creates a matching availability block).
+    30→    30→- [x] **Admin oversight** — user directory (filter by role/q/suspended/verified), patch user
+    31→    31→  (role/verify/suspend; cannot demote self), moderation queue (`status` filter), approve/reject
+    32→    32→  equipment, audit-logs query (filter by action/resource/actorId), platform stats
+    33→    33→  (`usersByRole`, `equipmentByStatus`, `equipmentByCategory`, totals, avgRating, auditLast7d).
+    34→    34→- [x] **Upload** — generic `/upload` (multipart `images`), `/upload` DELETE by `publicId`.
+    35→    35→  Local storage with type/size validation, Cloudinary-pluggable interface.
+    36→    36→- [x] **Seed** — idempotent `bun run seed`; 11 users (1 admin, 5 owners, 5 customers), 10
+    37→    37→  categories, 34 equipment listings across 8 cities, ~12 reviews, ~8 wishlists, maintenance logs
+    38→    38→  + windows + availability blocks, audit seed rows. Demo accounts printed at the end.
+    39→    39→
+    40→    40→---
+    41→    41→
+    42→    42→## Phase 2: Booking System & Rental Lifecycle — COMPLETE
+    43→    43→
+    44→    44→### New data model
+    45→    45→
+    46→    46→Six new Prisma models added to `prisma/schema.prisma`:
+    47→    47→
+    48→    48→- **`Booking`** — `equipmentId`, `customerId`, `ownerId`, `status`, `previousStatus`, `startDate`,
+    49→    49→  `endDate`, `days`, `baseAmount`, `adjustments` (JSON), `depositAmount`, `commissionRate` (10%),
+    50→    50→  `commissionAmount`, `totalAmount`, `cancellationPolicy` (`flexible`/`moderate`/`strict`),
+    51→    51→  `refundAmount`, `holdExpiresAt`, `confirmedAt`, `pickedUpAt`, `returnedAt`, `inspectedAt`,
+    52→    52→  `completedAt`, `cancelledAt`, `cancelReason`, `pickupChecklist`/`returnChecklist`/`pickupPhotos`/
+    53→    53→  `returnPhotos` (JSON), `idempotencyKey`. Compound index on `{equipmentId, startDate, endDate,
+    54→    54→  status}` for concurrency, secondary indexes on `customerId+status`, `ownerId+status`,
+    55→    55→  `status`, `holdExpiresAt`, and `@@unique([idempotencyKey])`.
+    56→    56→- **`BookingStatusHistory`** — append-only audit trail (`fromStatus`, `toStatus`, `actorId`,
+    57→    57→  `note`).
+    58→    58→- **`Payment`** — `bookingId`, `userId`, `type` (`hold`/`release`/`refund`/`charge`/`commission`),
+    59→    59→  `amount`, `status` (`pending`/`completed`/`failed`/`reversed`), `reference` (simulated gateway
+    60→    60→  ref), `idempotencyKey`.
+    61→    61→- **`BookingMessage`** — chat between customer and owner on a booking (`senderId`, `message`,
+    62→    62→  `attachmentUrl`).
+    63→    63→- **`Dispute`** — `bookingId`, `raisedById`, `againstId`, `reason` (`damage`/`late_return`/
+    64→    64→  `wrong_item`/`payment`/`other`), `description`, `evidenceUrls` (JSON), `status`
+    65→    65→  (`open`/`owner_responded`/`admin_reviewing`/`resolved`/`closed`), `resolution`
+    66→    66→  (`refund_customer`/`favor_owner`/`split`/`warning`), `resolutionNote`, `resolvedById`,
+    67→    67→  `resolvedAt`.
+    68→    68→- **`DisputeMessage`** — discussion thread for a dispute; `isStaff` flag marks admin messages.
+    69→    69→
+    70→    70→`User` got `trustScore Int @default(50)` + booking/payment/dispute relations; `Equipment` got
+    71→    71→`cancellationPolicy String @default("flexible")` and `autoApprove Boolean @default(false)`.
+    72→    72→
+    73→    73→### Booking state machine (`src/lib/booking-service.ts`)
+    74→    74→
+    75→    75→```
+    76→    76→pending ──▶ held ──▶ confirmed ──▶ picked_up ──▶ in_use ──▶ return_pending ──▶ returned ──▶ inspected ──▶ completed
+    77→    77→   │          │          │            │             │             │
+    78→    78→   ▼          ▼          ▼            ▼             ▼             ▼
+    79→    79→cancelled  cancelled  cancelled   late/        late/         late/         (inspected may go to disputed)
+    80→    80→                      cancelled   disputed              disputed
+    81→    81→```
+    82→    82→
+    83→    83→Branch states:
+    84→    84→- **`cancelled`** — terminal; the matching `booked` availability block is removed.
+    85→    85→- **`late`** — auto-detected by cron when `endDate` passes for any active status; can transition
+    86→    86→  back to `returned` (owner confirms late return) or to `disputed`/`cancelled`.
+    87→    87→- **`disputed`** — set when a `Dispute` is raised against the booking; resolved back to
+    88→    88→  `completed` (admin) or `cancelled` (admin).
+    89→    89→
+    90→    90→Legal transitions are enforced by `assertTransition(from, to)` which throws
+    91→    91→`INVALID_TRANSITION 422` on illegal moves. Every transition writes a `BookingStatusHistory` row.
+    92→    92→
+    93→    93→### Availability engine
+    94→    94→
+    95→    95→`checkAvailability(equipmentId, startDate, endDate, excludeBookingId?)` returns
+    96→    96→`{ available, conflicts[] }`. Conflicts are checked against three sources:
+    97→    97→
+    98→    98→1. **Active bookings** — `status in (held, confirmed, picked_up, in_use, return_pending,
+    99→    99→   returned, inspected)`.
+   100→   100→2. **Availability blocks** — `owner_blocked`, `maintenance`, `booked`.
+   101→   101→3. **Maintenance windows**.
+   102→   102→
+   103→   103→`Equipment.bufferHours` is applied as a buffer around the requested range (subtract from
+   104→   104→`startDate`, add to `endDate`) before checking. On booking create, a `booked` availability
+   105→   105→block is written atomically with the booking; on cancel/complete the block is removed.
+   106→   106→
+   107→   107→### Pricing & commission
+   108→   108→
+   109→   109→`calculateBookingPrice()` reuses the Phase 1 `calculatePrice()` (weekend surcharge, long
+   110→   110→discount, seasonal) and adds a flat **10% platform commission** (`commissionAmount`).
+   111→   111→`totalAmount` is the rental total (excluding deposit); `depositAmount` is held separately and
+   112→   112→released on completion (or refunded in full/partial on cancellation/dispute resolution per
+   113→   113→policy).
+   114→   114→
+   115→   115→### Cancellation policies (`calculateRefund()`)
+   116→   116→
+   117→   117→| Policy     | More than          | Within               |
+   118→   118→| ---------- | ------------------ | -------------------- |
+   119→   119→| `flexible` | 24h → **100%**     | 24h → **50%**        |
+   120→   120→| `moderate`| 48h → **50%**      | 48h → **25%**        |
+   121→   121→| `strict`  | 72h → **25%**      | 72h → **0%**         |
+   122→   122→
+   123→   123→`completed` and `returned` bookings refund `0`.
+   124→   124→
+   125→   125→### Checkout hold & cron jobs
+   126→   126→
+   127→   127→- A new booking enters `held` with `holdExpiresAt = now + 10 min`. If the customer doesn't
+   128→   128→  confirm + pay within 10 minutes, the cron job `releaseExpiredHolds()` auto-cancels the
+   129→   129→  booking and removes the `booked` block.
+   130→   130→- `detectLateReturns()` flips any active booking past `endDate` to `late`.
+   131→   131→- Both jobs are exposed at `POST /api/v1/cron/run?job=release-holds|detect-late|all`. There is
+   132→   132→  no internal scheduler yet — see Known Issues.
+   133→   133→
+   134→   134→### New endpoints (20 routes)
+   135→   135→
+   136→   136→Bookings: `POST /bookings`, `GET /bookings`, `GET /bookings/:id`, `POST /bookings/:id/confirm`,
+   137→   137→`POST /bookings/:id/cancel`, `POST /bookings/:id/pickup`, `POST /bookings/:id/return`,
+   138→   138→`POST /bookings/:id/inspect`, `POST /bookings/:id/complete`, `POST /bookings/:id/extend`,
+   139→   139→`POST /bookings/:id/approve`, `POST /bookings/:id/review`, `GET|POST /bookings/:id/messages`,
+   140→   140→`POST /bookings/:id/payments`, `POST /bookings/:id/payments/:paymentId`,
+   141→   141→`POST /bookings/check-availability`.
+   142→   142→
+   143→   143→Disputes: `POST /disputes`, `GET /disputes`, `GET /disputes/:id`,
+   144→   144→`GET|POST /disputes/:id/messages`, `POST /disputes/:id/resolve`.
+   145→   145→
+   146→   146→Cron: `POST /cron/run`.
+   147→   147→
+   148→   148→### Seed (Phase 2)
+   149→   149→
+   150→   150→120 bookings across 12 months with payments, status history, booking messages, disputes,
+   151→   151→trust-score updates. Provides meaningful historical data for the Phase 3 analytics.
+   152→   152→
+   153→   153→### New SPA views (12)
+   154→   154→
+   155→   155→`checkout`, `my-rentals`, `booking-detail`, `owner-bookings`, `owner-calendar`, `disputes`,
+   156→   156→`dispute-detail`, `admin-bookings`, `admin-disputes`, `admin-analytics`, `owner-analytics`,
+   157→   157→`pricing-suggestions`, `fraud-flags` — see Page Inventory below for roles and routes.
+   158→   158→
+   159→   159→### Socket.IO
+   160→   160→
+   161→   161→Mini service on **port 3003** for real-time availability updates (`availability:updated` event
+   162→   162→per equipment) and booking chat. The Next.js app still has a 30s polling fallback; wiring the
+   163→   163→frontend socket client is a follow-up (see Known Issues).
+   164→   164→
+   165→   165→---
+   166→   166→
+   167→   167→## Phase 3: Analytics & Intelligence — COMPLETE
+   168→   168→
+   169→   169→### Analytics API (4 endpoints)
+   170→   170→
+   171→   171→| Endpoint                              | Auth            | Description |
+   172→   172→| ------------------------------------- | --------------- | ----------- |
+   173→   173→| `GET /analytics/revenue?months=N`     | owner / admin   | Monthly revenue trend (default 6, max 12). Owners scoped to their own bookings; admins see platform-wide. Returns `months[]` (label, revenue, commission, bookings) and `totals` (revenue, commission, bookings, avgPerBooking). Only `completed` bookings counted. |
+   174→   174→| `GET /analytics/utilization`          | owner / admin   | Per-item utilization rate = total days rented ÷ days since listed (capped at 100%). Returns `items[]` (id, title, baseDailyPrice, status, coverUrl, bookingCount, totalDaysRented, utilizationRate, potentialRevenue) sorted by utilization desc, plus `avgUtilization`. |
+   175→   175→| `GET /analytics/patterns`             | owner / admin   | Booking patterns: weekday distribution, hourly distribution, `avgDuration`, `cancellationRate`, `cancelReasons[]`, `completedCount`, `cancelledCount`, `repeatRate`, `repeatCustomers`, `totalCustomers`, `totalBookings`. |
+   176→   176→| `GET /analytics/leaderboard`          | admin           | Owner leaderboard (top 10 by revenue from completed bookings, with `businessName`/`avatarUrl`/`isVerified`) plus per-asset ROI (`revenue`, `roi` = revenue ÷ replacementValue, `monthlyRevenue`, `paybackMonths`). |
+   177→   177→
+   178→   178→### Intelligence API (6 endpoints)
+   179→   179→
+   180→   180→| Endpoint                              | Auth            | Description |
+   181→   181→| ------------------------------------- | --------------- | ----------- |
+   182→   182→| `GET /intelligence/pricing-suggestions` | owner / admin | Demand-aware pricing per active listing. Demand score = `(wishlists×2 + reviews×3 + bookings×1) ÷ monthsSinceListed`. Compares current price against category average. Returns per-equipment `suggestedPrice`, `confidence` (0–1), `reasoning`, and `inputs` (wishlistCount, reviewCount, bookingCount, monthsSinceListed, categoryAverage, demandScore). Suggestions are also persisted to `PriceSuggestion` rows. |
+   183→   183→| `POST /intelligence/pricing-suggestions/:id` | owner / admin | Accept / dismiss / edit a suggestion. Body `{ action: 'accept'\|'dismiss'\|'edit', editedPrice? }`. Accept/edit also updates `Equipment.baseDailyPrice`. |
+   184→   184→| `GET /intelligence/recommendations?type=…` | public (optional) | `?type=for_you` (default; personalized from wishlist categories, scored by rating×20 + reviewCount×5 + wishlistCount×3), `?type=frequently_together&id=…` (co-booking — equipment booked by the same customers who booked this item), `?type=similar&id=…` (same category, excluding current). Each result has a `reason` and `matchScore`. |
+   185→   185→| `GET /intelligence/fraud-flags`        | admin           | Rule-based anomaly detection. Flags: `multiple_failed_payments` (≥3 failed, medium), `frequent_cancellations` (≥5 cancelled, medium), `frequent_disputes` (≥3 raised, high), `low_trust_score` (trust < 30, high), `invalid_booking_duration` (days ≤ 0, low). Returns `{ flags[], totalFlags }`. |
+   186→   186→| `GET /intelligence/trust-score?userId=…` | customer / owner / admin | Returns `trustScore` (stored) + `computedScore` (live) and a `factors[]` breakdown: Verification (10), Completed rentals (25), Cancellation rate (15), Punctuality (20), Disputes (10), Reviews received (10), Avg rating (10) — totals 100. Customers can only query their own; admins can query anyone. |
+   187→   187→| `GET /intelligence/late-prediction`   | owner / admin   | Active bookings with risk score = `trustRisk × 0.4 + timeRisk × 0.6` where trustRisk scales by trust < 50 and timeRisk scales by hours < 24. Returns `predictions[]` with `prediction` (`on_track`/`at_risk`/`likely_late`), `recommendation`, `riskScore`, `hoursRemaining`. Also returns `atRiskCount` and `likelyLateCount`. |
+   188→   188→| `POST /intelligence/what-if`          | owner / admin   | Price/availability simulator. Body `{ equipmentId, dailyPrice, availableDaysPerMonth }`. Returns `current` (dailyPrice, estimatedUtilization, monthlyRevenue, annualRevenue), `simulated` (new dailyPrice, availableDaysPerMonth, estimatedUtilization, monthlyRevenue, annualRevenue, sampleBookingTotal), `comparison` (revenueDiff, revenueDiffPct, demandMultiplier). Demand multiplier applies price elasticity (price↑ → demand↓). |
+   189→   189→
+   190→   190→### New SPA views (3 dashboards + 2 consoles)
+   191→   191→
+   192→   192→`admin-analytics`, `owner-analytics`, `pricing-suggestions`, `fraud-flags` (admin).
+   193→   193→
+   194→   194→`admin-analytics` shows revenue trend chart, weekday booking patterns, owner leaderboard with
+   195→   195→ROI/payback. `owner-analytics` shows revenue chart + per-item utilization. `pricing-suggestions`
+   196→   196→shows AI-driven suggestions with accept/dismiss/edit. `fraud-flags` shows the rule-based
+   197→   197→anomaly list with severity badges.
+   198→   198→
+   199→   199→### Seed (Phase 3)
+   200→   200→
+   201→   201→The 120 Phase 2 bookings now produce meaningful trend / utilization / pattern / leaderboard
+   202→   202→data; trust scores are derived from booking/review history so the fraud-flags endpoint returns
+   203→   203→real findings (e.g. frequent-dispute and low-trust flags fire on seeded accounts).
+   204→   204→
+   205→   205→---
+   206→   206→
+   207→   207→## Page Inventory (SPA views, served from `/`)
+   208→   208→
+   209→   209→The single Next.js route renders a SPA shell that switches views via a `?view=<key>` query param
+   210→   210→(client-side). The table below is the Phase 1–3 view contract the API supports.
+   211→   211→
+   212→   212→### Phase 1 views
+   213→   213→
+   214→   214→| View name        | Route (`?view=`)            | Role                  | Status                          |
+   215→   215→| ---------------- | --------------------------- | --------------------- | ------------------------------- |
+   216→   216→| home             | `?view=home` (default)       | public                | Shell ready / UI pending         |
+   217→   217→| search           | `?view=search`               | public                | API ready / UI pending           |
+   218→   218→| equipment        | `?view=equipment&id=…`        | public                | API ready / UI pending           |
+   219→   219→| compare          | `?view=compare&ids=a,b,c`     | public                | API ready / UI pending           |
+   220→   220→| wishlist         | `?view=wishlist`              | customer              | API ready / UI pending           |
+   221→   221→| login            | `?view=login`                 | public                | API ready / UI pending           |
+   222→   222→| register         | `?view=register`              | public                | API ready / UI pending           |
+   223→   223→| reset-password   | `?view=reset-password&token=…`| public                | API ready / UI pending           |
+   224→   224→| profile          | `?view=profile`               | customer              | API ready / UI pending           |
+   225→   225→| owner-listings   | `?view=owner-listings`        | owner                 | API ready / UI pending           |
+   226→   226→| listing-form     | `?view=listing-form&id=…`      | owner                 | API ready / UI pending           |
+   227→   227→| maintenance      | `?view=maintenance&id=…`       | owner                 | API ready / UI pending           |
+   228→   228→| admin-users      | `?view=admin-users`           | admin                 | API ready / UI pending           |
+   229→   229→| admin-categories | `?view=admin-categories`      | admin                 | API ready / UI pending           |
+   230→   230→| admin-moderation | `?view=admin-moderation`      | admin                 | API ready / UI pending           |
+   231→   231→| admin-audit      | `?view=admin-audit`           | admin                 | API ready / UI pending           |
+   232→   232→
+   233→   233→### Phase 2 views — Booking System & Rental Lifecycle
+   234→   234→
+   235→   235→| View name        | Route (`?view=`)                 | Role                  | Status                          |
+   236→   236→| ---------------- | -------------------------------- | --------------------- | ------------------------------- |
+   237→   237→| checkout         | `?view=checkout&equipmentId=…&start=…&end=…` | customer | API ready / UI pending |
+   238→   238→| my-rentals       | `?view=my-rentals`                | customer              | API ready / UI pending           |
+   239→   239→| booking-detail   | `?view=booking-detail&id=…`       | customer / owner      | API ready / UI pending           |
+   240→   240→| owner-bookings   | `?view=owner-bookings`            | owner                 | API ready / UI pending           |
+   241→   241→| owner-calendar   | `?view=owner-calendar`            | owner                 | API ready / UI pending           |
+   242→   242→| disputes         | `?view=disputes`                  | customer / owner      | API ready / UI pending           |
+   243→   243→| dispute-detail   | `?view=dispute-detail&id=…`       | customer / owner / admin | API ready / UI pending        |
+   244→   244→| admin-bookings   | `?view=admin-bookings`            | admin                 | API ready / UI pending           |
+   245→   245→| admin-disputes   | `?view=admin-disputes`            | admin                 | API ready / UI pending           |
+   246→   246→
+   247→   247→### Phase 3 views — Analytics & Intelligence
+   248→   248→
+   249→   249→| View name           | Route (`?view=`)                | Role                  | Status                          |
+   250→   250→| ------------------- | ------------------------------- | --------------------- | ------------------------------- |
+   251→   251→| admin-analytics     | `?view=admin-analytics`         | admin                 | API ready / UI pending           |
+   252→   252→| owner-analytics     | `?view=owner-analytics`         | owner                 | API ready / UI pending           |
+   253→   253→| pricing-suggestions | `?view=pricing-suggestions`     | owner                 | API ready / UI pending           |
+   254→   254→| fraud-flags         | `?view=fraud-flags`             | admin                 | API ready / UI pending           |
+   255→   255→
+   256→   256→> "API ready / UI pending" = the matching `/api/v1/*` endpoints are implemented, tested, and
+   257→   257→> documented in `API_CONTRACT.md`; the React view component is the next hand-off.
+   258→   258→
+   259→   259→---
+   260→   260→
+   261→   261→## Endpoints implemented
+   262→   262→
+   263→   263→See **`docs/API_CONTRACT.md`** for the full table. Summary:
+   264→   264→
+   265→   265→- **Auth (9):** register, login, logout, refresh, me, profile (PATCH), avatar (POST), forgot-password,
+   266→   266→  reset-password.
+   267→   267→- **Categories (5):** list, create, get, update, soft-delete.
+   268→   268→- **Equipment (8):** list (search), create, my, compare, get, update, soft-delete, images POST/PATCH/DELETE.
+   269→   269→- **Availability (3):** list, block, unblock.
+   270→   270→- **Maintenance (7):** logs list/create/update/delete; windows list/create/delete.
+   271→   271→- **Reviews (3):** list-by-equipment (paged), create (customer), helpful vote toggle.
+   272→   272→- **Wishlist (5):** list (paged), add, toggle, remove, is-in-wishlist.
+   273→   273→- **Upload (2):** POST (multipart), DELETE (by publicId).
+   274→   274→- **Admin (9):** users list, user patch, equipment moderation queue, equipment moderate, audit-logs,
+   275→   275→  stats, growth, revenue, overview.
+   276→   276→- **Customer/Owner dashboards (5):** customer stats, owner stats, owner activity, owner revenue,
+   277→   277→  owner profile, price insight, rating distribution, equipment trending.
+   278→   278→- **Notifications (3):** list (with `x-unread-count` header), mark-one-read, mark-all-read.
+   279→   279→- **Phase 2 Bookings (20):** create, list, get, confirm, cancel, pickup, return, inspect, complete,
+   280→   280→  extend, approve, review, messages (list+send), payments (charge+hold, release, refund),
+   281→   281→  check-availability.
+   282→   282→- **Phase 2 Disputes (5):** raise, list, get, messages (list+send), resolve.
+   283→   283→- **Phase 2 Cron (1):** `POST /cron/run?job=release-holds|detect-late|all`.
+   284→   284→- **Phase 3 Analytics (4):** revenue, utilization, patterns, leaderboard.
+   285→   285→- **Phase 3 Intelligence (6):** pricing-suggestions (list + accept/dismiss/edit), recommendations,
+   286→   286→  fraud-flags, trust-score, late-prediction, what-if.
+   287→   287→
+   288→   288→---
+   289→   289→
+   290→   290→## Known issues / limitations
+   291→   291→
+   292→   292→### Phase 1
+   293→   293→
+   294→   294→1. **SQLite has no native geo index.** Distance filtering & `sort=distance` use the Haversine
+   295→   295→   formula computed in JS over the candidate set (`src/lib/geo.ts`). Fine for the seeded catalog
+   296→   296→   (~30 listings); will revisit with PostGIS or an FTS5 table in a later phase.
+   297→   297→2. **No full-text search.** Keyword search uses Prisma `contains` (SQL `LIKE '%q%'`). No
+   298→   298→   relevance ranking, no stop-words. A later phase may add SQLite FTS5 or an external index.
+   299→   299→3. **Local uploads only.** Files land in `public/uploads/`. The upload interface is
+   300→   300→   Cloudinary-pluggable; swapping means re-implementing three functions in `src/lib/upload.ts`.
+   301→   301→   No image resizing/optimization is done yet (`sharp` is a dependency but not yet wired).
+   302→   302→4. **Upload validation surfaces as 500.** `parseAndSaveImages` throws plain `Error`s with a `.code`
+   303→   303→   (`NO_FILES`/`BAD_TYPE`/`TOO_LARGE`/`TOO_MANY`) which currently flow through `handleError` as
+   304→   304→   `INTERNAL_ERROR` (500). The API contract documents these as `VALIDATION_ERROR` (400) for client
+   305→   305→   semantics; a small `handler.ts` patch will map them explicitly.
+   306→   306→5. **Email is dev-console only.** Reset links are printed to the server log; no SMTP in sandbox.
+   307→   307→6. **`Equipment.moderatedById` and `AvailabilityBlock.ownerId` / `MaintenanceWindow.ownerId` /
+   308→   308→   `MaintenanceLog.ownerId` are denormalized** — not declared as Prisma relations to avoid circular
+   309→   309→   cascades; referential integrity is enforced in app code.
+   310→   310→7. **Rate limiting is in-memory.** Correct for single-server sandbox; swap to Redis in production
+   311→   311→   behind the same `rateLimit()` signature.
+   312→   312→8. **`next-auth` is installed but unused.** Custom HS256 JWT was chosen for fine-grained control
+   313→   313→   (see `DECISIONS.md §2`). The dependency can be removed in a cleanup pass.
+   314→   314→
+   315→   315→### Phase 2
+   316→   316→
+   317→   317→9. **Payments are simulated.** `POST /bookings/:id/payments` writes a `charge` + a `hold`
+   318→   318→   `Payment` row with `status='completed'` and a `sim_*` reference. There is no real gateway
+   319→   319→   integration; the `Payment` interface is Stripe/Razorpay-pluggable behind the same route shape.
+   320→   320→10. **Cron is API-callable but not auto-scheduled.** `POST /cron/run?job=…` works, but an
+   321→   321→    external scheduler (e.g. Vercel Cron, node-cron, or a k8s CronJob) needs to invoke it for
+   322→   322→    hold-release + late-detection to actually run on a clock.
+   323→   323→11. **Socket.IO is server-side only.** The mini socket service runs on port 3003 and emits
+   324→   324→    `availability:updated` + booking chat events, but the frontend still polls every 30s.
+   325→   325→    Wiring a frontend socket client is a follow-up.
+   326→   326→12. **No FullCalendar.** The owner-calendar and equipment-detail availability calendar use a
+   327→   327→    custom month-grid component instead of FullCalendar (the library was not installed).
+   328→   328→13. **Idempotency keys are optional.** `POST /bookings` accepts an `idempotencyKey` and
+   329→   329→    `POST /bookings/:id/payments` synthesises one from the booking id; clients that omit the
+   330→   330→    key can still create duplicate bookings on retry.
+   331→   331→14. **`Equipment.autoApprove` is not yet surfaced in the listing form.** The booking flow
+   332→   332→    honours it (auto-approve → straight to `confirmed`), but there is no UI toggle to set it.
+   333→   333→15. **Two-way review.** `POST /bookings/:id/review` allows both customer → owner/equipment and
+   334→   334→    owner → customer reviews after `completed`; the existing `POST /reviews` endpoint remains
+   335→   335→    for general equipment reviews. Trust score is nudged by ±2 per star above/below 3.
+   336→   336→
+   337→   337→### Phase 3
+   338→   338→
+   339→   339→16. **Pricing suggestions are rule-based, not ML.** The demand score is a weighted formula
+   340→   340→    (`(wishlists×2 + reviews×3 + bookings×1) ÷ monthsSinceListed`) with three threshold rules
+   341→   341→    (raise 15%, lower 10%, align to category). The `reasoning` string is human-readable; an ML
+   342→   342→    model could be plugged in behind the same response shape.
+   343→   343→17. **Recommendations are co-booking + content-based.** No matrix factorization or embeddings;
+   344→   344→    `frequently_together` counts co-occurring bookings by the same customers. Adequate for the
+   345→   345→    seeded catalog; revisit with a real model at scale.
+   346→   346→18. **Fraud detection is rule-based.** Five rules with fixed thresholds (`≥3` failed payments,
+   347→   347→    `≥5` cancellations, `≥3` disputes, trust `<30`, days `≤0`). No ML anomaly model.
+   348→   348→19. **Trust score factors are deterministic.** The 7-factor breakdown is computed live; the
+   349→   349→    stored `User.trustScore` is updated only on review creation (`±(rating-3)*2`).
+   350→   350→20. **Late prediction uses a 40/60 trust/time risk blend.** The weights are hard-coded; tuning
+   351→   351→    should be data-driven once real late-return outcomes exist.
+   352→   352→21. **What-if uses a price-elasticity heuristic.** `demandMultiplier = max(0.5, 1 - (priceChangeRatio - 1) * 0.3)` for price increases; `1 + (1 - priceChangeRatio) * 0.2` for decreases. Real
+   353→   353→    elasticity should be derived from booking history per category.
+   354→   354→22. **Utilization caps at 100%.** `utilizationRate = min(100, totalDaysRented ÷ daysSinceListed × 100)`. Multi-booking overlap on the same day is not subtracted.
+   355→   355→
+   356→   356→---
+   357→   357→
+   358→   358→## Integration checkpoint notes
+   359→   359→
+   360→   360→- **Seed works end-to-end:** `bun run db:push && bun run seed` produces a fully populated DB
+   361→   361→  (Phase 1 marketplace + 120 Phase 2 bookings across 12 months + Phase 3 trust scores) and
+   362→   362→  prints the demo accounts.
+   363→   363→- **RBAC tested:** every protected route enforces `requireAuth(roles)` + `assertOwner(...)` where
+   364→   364→  applicable; admin endpoints reject non-admin callers with `FORBIDDEN 403`; owner endpoints
+   365→   365→  reject non-owning owners with `FORBIDDEN 403`.
+   366→   366→- **Auth round-trip:** register → cookies set → `GET /auth/me` returns the user → access expires →
+   367→   367→  `POST /auth/refresh` rotates refresh and returns the user → original request retries.
+   368→   368→- **Audit trail:** every state-changing action writes a `AuditLog` row; booking transitions also
+   369→   369→  write `BookingStatusHistory` rows.
+   370→   370→- **Envelope:** all endpoints return the documented `{ success, data, error, meta }` envelope;
+   371→   371→  Prisma `P2002`/`P2025` are auto-mapped to `CONFLICT 409` / `NOT_FOUND 404`.
+   372→   372→- **Postman collection** ships at `docs/postman/RentalHub.postman_collection.json` with folders
+   373→   373→  matching the API groups (Auth, Categories, Equipment, Availability, Maintenance, Reviews,
+   374→   374→  Wishlist, Upload, Admin, Bookings, Disputes, Analytics, Intelligence); uses `{{base_url}}`
+   375→   375→  and example bodies for the happy paths.
+   376→   376→
+   377→   377→---
+   378→   378→
+   379→   379→## Next phase — Phase 4 (AI / QR / Assistant)
+   380→   380→
+   381→   381→1. **Pluggable AI provider interface** so `pricing-suggestions`, `recommendations`,
+   382→   382→   `fraud-flags`, `late-prediction`, and `what-if` can swap the rule-based engine for an LLM /
+   383→   383→   embedding / gradient-boosted model behind the same response shape.
+   384→   384→2. **QR codes** for pickup/return handoff (booking confirmation generates a signed QR; scanning
+   385→   385→   at pickup flips the booking to `picked_up`).
+   386→   386→3. **Conversational assistant** for booking, search, and dispute help.
+   387→   387→4. **External scheduler** for the Phase 2 cron jobs (`POST /cron/run`).
+   388→   388→5. **Frontend socket client** for real-time availability + booking chat (replacing 30s polling).
+   389→   389→6. **Real payment gateway** (Stripe/Razorpay) behind the existing `Payment` interface.
+   390→   390→7. **Cloudinary / Redis / SMTP** — flip the pluggable adapters (`src/lib/upload.ts`,
+   391→   391→   `src/lib/rateLimit.ts`, the forgot-password mailer) to their production backends.
+   392→   392→

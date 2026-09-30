@@ -1,0 +1,517 @@
+// RentalHub – Equipment Rental Platform (Phase 1: Foundation & Marketplace)
+// Adapted to Prisma + SQLite. Enums stored as String (validated in Zod).
+// Soft delete via `deletedAt`; all models have timestamps where relevant.
+// Arrays of primitives are stored via child models (EquipmentImage/Spec) or Json (pricingRules/availability).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String?
+  passwordHash       String
+  role               String   @default("customer") // customer | owner | admin
+  accountType        String?  // individual | business (owners)
+  businessName       String?
+  registrationNumber String?
+  avatarUrl          String?
+  avatarPublicId     String?
+  phone              String?
+  bio                String?
+  isVerified         Boolean  @default(false)
+  isSuspended        Boolean  @default(false)
+  isOnboarded        Boolean  @default(false)
+  resetToken         String?
+  resetTokenExpiry   DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  equipment      Equipment[]
+  wishlists      Wishlist[]
+  reviewsGiven   Review[]      @relation("ReviewReviewer")
+  reviewsReceived Review[]     @relation("ReviewReceiver")
+  maintenanceLogs MaintenanceLog[]
+  auditLogsActor AuditLog[]    @relation("AuditActor")
+  auditLogsTarget AuditLog[]   @relation("AuditTarget")
+  notifications   Notification[]
+  bookingsCustomer Booking[]   @relation("BookingCustomer")
+  bookingsOwner    Booking[]   @relation("BookingOwner")
+  payments         Payment[]
+  bookingMessages  BookingMessage[]
+  disputesRaised   Dispute[]   @relation("DisputeRaiser")
+  disputesAgainst  Dispute[]   @relation("DisputeAgainst")
+  disputeMessages  DisputeMessage[]
+  waitlist         Waitlist[]
+  trustScore       Float?      @default(50)
+
+  @@index([role])
+  @@index([isSuspended])
+  @@index([deletedAt])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  iconUrl     String?
+  parentId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  equipment Equipment[]
+
+  @@index([slug])
+  @@index([parentId])
+}
+
+model Equipment {
+  id              String   @id @default(cuid())
+  title           String
+  description     String
+  categoryId      String
+  category        Category @relation(fields: [categoryId], references: [id])
+  ownerId         String
+  owner           User     @relation(fields: [ownerId], references: [id])
+
+  status          String   @default("draft") // draft | active | paused | rejected
+  condition       String   @default("good") // new | like_new | good | fair | poor
+
+  baseDailyPrice  Float
+  baseHourlyPrice Float?
+  baseDeposit     Float
+  replacementValue Float?
+
+  // Dynamic pricing v1: [{ type: 'weekend_surcharge'|'long_discount'|'seasonal', value, ... }]
+  pricingRules Json?
+
+  lat Float?
+  lng Float?
+  city String?
+  address String?
+
+  bufferHours     Int      @default(0)
+  purchaseDate    DateTime?
+  conditionNotes  String?
+  cancellationPolicy String @default("flexible") // flexible | moderate | strict
+  autoApprove     Boolean  @default(false)
+
+  moderatedAt     DateTime?
+  moderatedById    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  images            EquipmentImage[]
+  specs             EquipmentSpec[]
+  wishlists         Wishlist[]
+  reviews           Review[]
+  availabilityBlocks AvailabilityBlock[]
+  maintenanceLogs   MaintenanceLog[]
+  maintenanceWindows MaintenanceWindow[]
+  bookings          Booking[]
+  priceSuggestions  PriceSuggestion[]
+  bundleItems       BundleItem[]
+  waitlists         Waitlist[]
+
+  @@index([categoryId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([baseDailyPrice])
+  @@index([city])
+  @@index([deletedAt])
+}
+
+model EquipmentImage {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  url         String
+  publicId    String?
+  isPrimary   Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([equipmentId])
+}
+
+model EquipmentSpec {
+  id          String @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  key         String
+  value       String
+  order       Int    @default(0)
+
+  @@index([equipmentId])
+}
+
+model AvailabilityBlock {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  ownerId     String
+  startDate    DateTime
+  endDate     DateTime
+  reason      String? // owner_blocked | maintenance | booked
+  createdAt   DateTime @default(now())
+
+  @@index([equipmentId])
+  @@index([startDate, endDate])
+}
+
+model MaintenanceLog {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  title       String
+  description String?
+  cost        Float    @default(0)
+  performedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([equipmentId])
+  @@index([ownerId])
+}
+
+model MaintenanceWindow {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  ownerId     String
+  startDate   DateTime
+  endDate     DateTime
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([equipmentId])
+  @@index([startDate, endDate])
+}
+
+model Wishlist {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, equipmentId])
+  @@index([userId])
+  @@index([equipmentId])
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  reviewerId  String
+  reviewer    User     @relation("ReviewReviewer", fields: [reviewerId], references: [id])
+  receiverId String
+  receiver    User     @relation("ReviewReceiver", fields: [receiverId], references: [id])
+  equipmentId String?
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
+  rating      Int // 1-5
+  title       String?
+  body        String?
+  images      Json?
+  status      String   @default("published") // published | hidden | flagged
+  helpfulVotes Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  helpfulVoters ReviewHelpfulVote[]
+
+  @@index([receiverId])
+  @@index([equipmentId])
+  @@index([reviewerId])
+  @@index([status])
+  @@index([helpfulVotes])
+}
+
+model ReviewHelpfulVote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+  targetId   String?
+  target     User?    @relation("AuditTarget", fields: [targetId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+}
+
+// ===== Phase 2: Booking System =====
+
+model Booking {
+  id               String   @id @default(cuid())
+  equipmentId      String
+  equipment        Equipment @relation(fields: [equipmentId], references: [id])
+  customerId      String
+  customer        User     @relation("BookingCustomer", fields: [customerId], references: [id])
+  ownerId         String
+  owner           User     @relation("BookingOwner", fields: [ownerId], references: [id])
+
+  status           String   @default("pending") // pending|held|confirmed|picked_up|in_use|return_pending|returned|inspected|completed|cancelled|late|disputed
+  previousStatus   String?
+
+  startDate        DateTime
+  endDate          DateTime
+  days             Int
+
+  baseAmount       Float
+  adjustments      Json?    // pricing rule breakdown
+  depositAmount    Float
+  commissionRate   Float    @default(10)
+  commissionAmount Float    @default(0)
+  totalAmount      Float
+
+  cancellationPolicy String @default("flexible")
+  refundAmount     Float?
+
+  holdExpiresAt    DateTime? // 10-min checkout hold
+  confirmedAt      DateTime?
+  pickedUpAt       DateTime?
+  returnedAt       DateTime?
+  inspectedAt      DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+
+  pickupChecklist  Json?
+  returnChecklist  Json?
+  pickupPhotos     Json?
+  returnPhotos     Json?
+
+  idempotencyKey   String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  payments         Payment[]
+  messages         BookingMessage[]
+  disputes         Dispute[]
+  statusHistory    BookingStatusHistory[]
+  damageComparisons DamageComparison[]
+
+  @@index([equipmentId, startDate, endDate, status])
+  @@index([customerId, status])
+  @@index([ownerId, status])
+  @@index([status])
+  @@index([holdExpiresAt])
+  @@unique([idempotencyKey])
+}
+
+model BookingStatusHistory {
+  id        String   @id @default(cuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus  String
+  actorId   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  type       String   // hold | release | refund | charge | commission
+  amount     Float
+  status     String   @default("pending") // pending | completed | failed | reversed
+  reference  String?  // simulated transaction id
+  idempotencyKey String?
+  createdAt  DateTime @default(now())
+
+  @@index([bookingId])
+  @@unique([idempotencyKey])
+}
+
+model BookingMessage {
+  id        String   @id @default(cuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  message   String
+  attachmentUrl String?
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([senderId])
+}
+
+model Dispute {
+  id          String   @id @default(cuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  raisedById  String
+  raisedBy    User     @relation("DisputeRaiser", fields: [raisedById], references: [id])
+  againstId   String
+  against     User     @relation("DisputeAgainst", fields: [againstId], references: [id])
+  reason      String   // damage | late_return | wrong_item | payment | other
+  description String
+  evidenceUrls Json?   // photo URLs
+  status      String   @default("open") // open | owner_responded | admin_reviewing | resolved | closed
+  resolution  String?  // refund_customer | favor_owner | split | warning
+  resolutionNote String?
+  resolvedById String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    DisputeMessage[]
+
+  @@index([bookingId])
+  @@index([raisedById])
+  @@index([againstId])
+  @@index([status])
+}
+
+model DisputeMessage {
+  id        String   @id @default(cuid())
+  disputeId String
+  dispute   Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  message   String
+  isStaff   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([disputeId])
+  @@index([senderId])
+}
+
+// ===== Phase 3: Intelligence =====
+
+model PriceSuggestion {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  suggestedPrice Float
+  confidence  Float    // 0-1
+  reasoning   String
+  inputs      Json?    // history, seasonality, weekday, lead time, utilization, competitor price
+  status      String   @default("pending") // pending | accepted | dismissed | edited
+  editedPrice Float?
+  createdAt   DateTime @default(now())
+
+  @@index([equipmentId])
+  @@index([status])
+}
+
+// ===== Phase 4: AI Vision & Innovation =====
+
+model DamageComparison {
+  id          String   @id @default(cuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  pickupPhotoUrl String
+  returnPhotoUrl String
+  angle       String   @default("front") // front | back | left | right | top
+  findings    Json?    // [{ region, severity, description, confidence }]
+  status      String   @default("pending") // pending | confirmed | rejected
+  reviewedById String?
+  reviewedAt  DateTime?
+  providerUsed String? // vlm | rule_based | manual
+  promptLog   String?  // redacted prompt
+  createdAt   DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([status])
+}
+
+model Bundle {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  discountPercent Float @default(10)
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       BundleItem[]
+  @@index([status])
+}
+
+model BundleItem {
+  id          String   @id @default(cuid())
+  bundleId    String
+  bundle      Bundle   @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  required    Boolean  @default(false)
+
+  @@index([bundleId])
+  @@index([equipmentId])
+}
+
+model Waitlist {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  notifiedAt  DateTime?
+  expiresAt   DateTime?
+  status      String   @default("waiting") // waiting | notified | booked | expired
+  createdAt   DateTime @default(now())
+
+  @@index([equipmentId])
+  @@index([userId])
+  @@index([status])
+}

@@ -1,0 +1,9 @@
+{
+  "name": "rentalhub-availability-socket",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "dev": "bun --hot index.ts" },
+  "dependencies": {
+    "socket.io": "^4.7.0"
+  }
+}
